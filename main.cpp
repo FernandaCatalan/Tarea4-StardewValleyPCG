@@ -6,9 +6,19 @@
 
 // Minerales
 #define CUARZO 'Q'
-#define ESMERALDA 'E'
+#define JADE 'J'
 #define DIAMANTE 'D'
+#define COBRE 'C'
+#define HIERRO 'H'
+#define ORO 'O'
+#define PIEDRA 'P'
+// Objetos en el mapa
+#define ENEMIGO 'X'
+#define ESCALERA 'E'
+#define BARRIL 'B'
+#define COFRE 'C' 
 
+// Estructura que representa una habitación
 struct Room {
     int x, y, width, height;
     Room(int x, int y, int w, int h) : x(x), y(y), width(w), height(h) {}
@@ -17,16 +27,9 @@ struct Room {
 // Generador de mapas usando el algoritmo BSP
 class BSPMapGenerator {
 private:
-    int mapWidth, mapHeight;
+    int mapWidth, mapHeight, nivel; // Dimensiones y nivel de la mina
     std::vector<std::vector<char>> map;
     std::vector<Room> rooms;
-
-    // Probabilidades de minerales (Q: 70%, E: 25%, D: 5%)
-    std::unordered_map<char, int> mineralProb = {
-        {CUARZO, 70},
-        {ESMERALDA, 25},
-        {DIAMANTE, 5}
-    };
 
     // Divide el mapa en habitaciones usando el algoritmo BSP
     void split(int x, int y, int w, int h, int depth) {
@@ -93,39 +96,118 @@ private:
         }
     }
 
-    // Selecciona un mineral aleatorio basado en las probabilidades
+    // Selecciona un mineral aleatorio basado en el nivel de la mina
     char getRandomMineral() {
         int randVal = rand() % 100;
-        if (randVal < mineralProb[DIAMANTE]) return DIAMANTE;
-        if (randVal < mineralProb[DIAMANTE] + mineralProb[ESMERALDA]) return ESMERALDA;
-        return CUARZO;
+        if (randVal < 60) return CUARZO;
+        if (nivel < 40 && randVal < 80) return COBRE;
+        else if (nivel < 80 && randVal < 80) return HIERRO;
+        else if (randVal < 80) return ORO;
+        if (randVal < 90) return JADE;
+        return DIAMANTE;
     }
 
-    // Añade minerales a las habitaciones
-    void addMinerals() {
-        for (const auto& room : rooms) {
-            int mineralCells = (room.width * room.height) * 0.2;  // Cantidad de minerales por habitación
-            for (int i = 0; i < mineralCells; ++i) {
-                int rx = room.x + rand() % room.width;
-                int ry = room.y + rand() % room.height;
-                if (rx < mapWidth && ry < mapHeight && map[ry][rx] == '.') {
-                    map[ry][rx] = getRandomMineral();
+    // Añade piedras en el 50% de las celdas del suelo de la habitación
+    void addRocksToRoom(const Room& room) {
+        for (int i = room.x; i < room.x + room.width; ++i) {
+            for (int j = room.y; j < room.y + room.height; ++j) {
+                if (map[j][i] == '.' && rand() % 100 < 50) {
+                    map[j][i] = PIEDRA;
                 }
             }
         }
     }
 
-public:
-    BSPMapGenerator(int width, int height) : mapWidth(width), mapHeight(height) {
-        map.resize(height, std::vector<char>(width, '#'));
-        srand(time(nullptr));
+    // Añade minerales sobre piedras existentes
+    void addMineralsToRoom(const Room& room) {
+        int area = room.width * room.height;
+        int numMinerales = area * 0.07;
+        for (int i = 0; i < numMinerales; ++i) {
+            int x = room.x + rand() % room.width;
+            int y = room.y + rand() % room.height;
+            if (map[y][x] == PIEDRA) map[y][x] = getRandomMineral();
+        }
     }
 
-    // Genera el mapa completo y maxDepth controla la profundidad máxima de división del BSP
+    // Añade enemigos sobre roca o suelo
+    void addEnemiesToRoom(const Room& room) {
+        int area = room.width * room.height;
+        int numEnemigos = area * 0.05;
+        for (int i = 0; i < numEnemigos; ++i) {
+            int x = room.x + rand() % room.width;
+            int y = room.y + rand() % room.height;
+            if (map[y][x] == PIEDRA || map[y][x] == '.') map[y][x] = ENEMIGO;
+        }
+    }
+
+    // Añade barriles sobre suelo libre
+    void addBarrelsToRoom(const Room& room) {
+        int area = room.width * room.height;
+        int numBarriles = area * 0.03;
+        for (int i = 0; i < numBarriles; ++i) {
+            int x = room.x + rand() % room.width;
+            int y = room.y + rand() % room.height;
+            if (map[y][x] == '.') map[y][x] = BARRIL;
+        }
+    }
+
+    // Orquestador de decoración de cada habitación
+    void addObjects() {
+        for (const Room& room : rooms) {
+            addRocksToRoom(room);
+            addMineralsToRoom(room);
+            addEnemiesToRoom(room);
+            addBarrelsToRoom(room);
+        }
+    }
+
+    // Piso especial: sin enemigos, sin rocas, con un cofre y una escalera
+    void addTreasureRoom() {
+        for (const Room& room : rooms) {
+            for (int i = room.x; i < room.x + room.width; ++i) {
+                for (int j = room.y; j < room.y + room.height; ++j) {
+                    map[j][i] = '.'; // dejar todo limpio
+                }
+            }
+            int x = room.x + rand() % room.width;
+            int y = room.y + rand() % room.height;
+            if (map[y][x] == '.') map[y][x] = COFRE; // agrega cofre
+        }
+        addStaircase();
+    }
+
+    // Añade una escalera al mapa
+    void addStaircase() {
+        for (int i = 0; i < 100; ++i) {
+            const Room& room = rooms[rand() % rooms.size()];
+            int x = room.x + rand() % room.width;
+            int y = room.y + rand() % room.height;
+            if (map[y][x] == '.' || map[y][x] == PIEDRA) {
+                map[y][x] = ESCALERA;
+                return;
+            }
+        }
+    }
+
+public:
+    // Constructor que define dimensiones y el nivel de mina
+    BSPMapGenerator(int width, int height, int nivelMina)
+        : mapWidth(width), mapHeight(height), nivel(nivelMina) {
+        map.resize(height, std::vector<char>(width, '#'));
+        srand(nivel); // Semilla fija por nivel
+    }
+
+    // Genera el mapa completo
     void generateMap(int maxDepth) {
         split(0, 0, mapWidth, mapHeight, maxDepth);
         connectRooms();
-        addMinerals();
+
+        if (nivel % 10 == 0) {
+            addTreasureRoom(); // piso especial
+        } else {
+            addObjects();      // piso normal
+            addStaircase();
+        }
     }
 
     // Imprime el mapa en la consola
@@ -140,14 +222,17 @@ public:
 };
 
 int main() {
-    // Define las dimensiones del mapa
-    // Ajustables dentro del código, para cambiar el tamaño del mapa
-    const int WIDTH = 50;
-    const int HEIGHT = 30;
+    srand(time(nullptr)); // semilla aleatoria para que el nivel también cambie
+
+    const int WIDTH = 40;
+    const int HEIGHT = 20;
     const int DEPTH = 4;
 
-    // Inicializa el generador de mapas y genera el mapa
-    BSPMapGenerator generator(WIDTH, HEIGHT);
+    // Nivel de mina aleatorio entre 1 y 120
+    int MINE_LEVEL = rand() % 120 + 1;
+    std::cout << "Generando nivel: " << MINE_LEVEL << std::endl;
+
+    BSPMapGenerator generator(WIDTH, HEIGHT, MINE_LEVEL);
     generator.generateMap(DEPTH);
     generator.printMap();
 
